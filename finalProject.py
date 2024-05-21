@@ -45,6 +45,8 @@ COUNT = 0
 state_stack = deque(maxlen=6)
 CHECK = True  # Used for debugging
 ONE_IMAGE = False
+MODE = 1  # Default mode
+PROGRESS = 0  # Squat progress
 
 # Load the Yolov8 model
 model = YOLO('src/models/yolov8s-pose.pt')
@@ -70,14 +72,20 @@ def add_annotations(frame):
     # Display state and count on the image
     state_text = f"State: {STATE}"
     count_text = f"Count: {COUNT}"
+    mode_text = f"Mode: {MODE}"
+    progress_text = f"Progress: {PROGRESS:.0f}%"
+
 
     # Define the position and font settings for the text
     text_position1 = (10, 30)
     text_position2 = (10, 60)
+    text_position3 = (10, 90)
+    text_position4 = (10, 120)
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.7
     green = (0, 255, 0)
     red = (0, 0, 255)
+    blue = (255, 0, 0)
     font_color = green if STATE == 'UP' else red
     font_thickness = 2
 
@@ -86,6 +94,16 @@ def add_annotations(frame):
                 font_scale, font_color, font_thickness)
     cv2.putText(frame_with_text, count_text, text_position2, font,
                 font_scale, green, font_thickness)
+    cv2.putText(frame_with_text, mode_text, text_position3, font,
+                font_scale, green, font_thickness)
+    cv2.putText(frame_with_text, progress_text, text_position4, font,
+                font_scale, blue, font_thickness)
+    
+     # Progress bar
+    bar_x, bar_y, bar_w, bar_h = 10, 150, 200, 20
+    progress_w = int(bar_w * PROGRESS / 100)
+    cv2.rectangle(frame_with_text, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), blue, 2)
+    cv2.rectangle(frame_with_text, (bar_x, bar_y), (bar_x + progress_w, bar_y + bar_h), blue, -1)
 
     return frame_with_text
 
@@ -181,7 +199,29 @@ def get_legs_coords(kpts):
     return left_leg_coords, right_leg_coords
 
 def get_hands_coords(kpts):
-    left_hand = [
+    """
+    Get the coordinates of the left and right wrists.
+    
+    Args:
+        kpts (ultralytics keypoints): Keypoints object from the Result
+            object in a pose estimation.
+
+    Returns:
+        left_hand_coords (numpy array): Coordinates of the left wrist.
+        right_hand_coords (numpy array): Coordinates of the right wrist.
+    """
+    # Indices of left and right wrists
+    left_hand = [9]
+    right_hand = [10]
+
+    # Left hand
+    left_hand_coords = kpts.data[0, left_hand, :].cpu().numpy()
+
+    # Right hand
+    right_hand_coords = kpts.data[0, right_hand, :].cpu().numpy()
+
+    return left_hand_coords, right_hand_coords
+
 
 
 def extract(result):
@@ -240,10 +280,19 @@ def extract(result):
         # You could also explore masks and probs
 
         # Masks object for segmentation masks outputs
-        # masks = result.masks
+        masks = result.masks
+        if masks is not None:
+            output_str += "\n\nMASKS\n------\n"
+            output_str += f"Number of masks: {len(masks.data)}\n"
+            for i, mask in enumerate(masks.data):
+                output_str += f"Mask {i} shape: {mask.shape}\n"
 
         # Probs object for classification outputs
-        # probs = result.probs
+        probs = r.probs
+        if probs is not None:
+            output_str += "\n\nPROBABILITIES\n-------------\n"
+            for i, prob in enumerate(probs):
+                output_str += f"Class {i} ({names[i]}): {prob:.4f}\n"
 
 
 def evaluate_position(result, limit_conf=0.3, verbose=False):
@@ -266,6 +315,7 @@ def evaluate_position(result, limit_conf=0.3, verbose=False):
     global COUNT
     global STATE
     global state_stack
+    global PROGRESS
 
     # Loop through Ultralytics Results
     for r in result:
@@ -288,6 +338,10 @@ def evaluate_position(result, limit_conf=0.3, verbose=False):
             # Calculate the minimum angle in both legs
             angles = legs_angles(left_coords[:, :2], right_coords[:, :2])
 
+            # Calculate progress based on knee angle
+            min_angle = min(angles)
+            PROGRESS = max(0, min(100, (150 - min_angle) / 30 * 100))
+
             # Legs bent or stretched
             if (angles < 120).all() and STATE=='UP':
                 STATE = 'DOWN'
@@ -305,7 +359,154 @@ def evaluate_position(result, limit_conf=0.3, verbose=False):
     if verbose:
         print(f"State: {STATE}")
         print(f"Count: {COUNT}")
+        print(f"Progress: {PROGRESS:.0f}%")
 
+def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
+    """
+    Evaluate position for mode 2: squats with hands above the hips
+
+    Args:
+        result (Ultralytics Results): Results object from Ultralytics. It
+            contains all the data of the pose estimation.
+        limit_conf (float, optional): It's the limiting confidence. Greater
+            confidences in (all) points estimation will be considered,
+            otherwise they will be discarded. Defaults to 0.3.
+        verbose (bool, optional): Print info. Defaults to False.
+    """
+
+    # Global variables
+    global COUNT
+    global STATE
+    global state_stack
+    global PROGRESS
+
+    # Loop through Ultralytics Results
+    for r in result:
+
+        # Get bounding boxes
+        box = r.boxes
+        if r.names[int(box.cls.item())] != 'person':
+            print("First box is not a person")
+            break
+
+        # Get keypoints
+        kpts = r.keypoints  # Keypoints object for pose outputs
+
+        # Get coordinates of the joints of the left and right legs
+        left_coords, right_coords = get_legs_coords(kpts)
+        left_hand_coords, right_hand_coords = get_hands_coords(kpts)
+        left_hip_y = left_coords[0, 1]
+        right_hip_y = right_coords[0, 1]
+
+        # Check for confidences
+        if (left_coords[:, 2] > limit_conf).all() and (right_coords[:, 2] > limit_conf).all() and \
+           (left_hand_coords[:, 2] > limit_conf).all() and (right_hand_coords[:, 2] > limit_conf).all():
+
+            # Calculate the minimum angle in both legs
+            angles = legs_angles(left_coords[:, :2], right_coords[:, :2])
+
+            # Calculate progress based on knee angle
+            min_angle = min(angles)
+            PROGRESS = max(0, min(100, (150 - min_angle) / 30 * 100))
+
+            # Check hands position relative to hips
+            hands_above_hips = (left_hand_coords[0, 1] < left_hip_y) and (right_hand_coords[0, 1] < right_hip_y)
+
+            if hands_above_hips:
+                # Legs bent or stretched
+                if (angles < 120).all() and STATE == 'UP':
+                    STATE = 'DOWN'
+                elif (angles > 150).all() and STATE == 'DOWN':
+                    STATE = 'UP'
+
+                # Update stack of states and count
+                state_stack.append(STATE)
+                if len(state_stack) == 6:
+                    if state_stack == deque(
+                            ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
+                        COUNT += 1
+            else:
+                print("bad squatting")
+
+    # Show info if required
+    if verbose:
+        print(f"State: {STATE}")
+        print(f"Count: {COUNT}")
+        print(f"Progress: {PROGRESS:.0f}%")
+
+
+def evaluate_position_mode_3(result, limit_conf=0.3, verbose=False):
+    """
+    Evaluate position for mode 3: squats with hands above the shoulders
+
+    Args:
+        result (Ultralytics Results): Results object from Ultralytics. It
+            contains all the data of the pose estimation.
+        limit_conf (float, optional): It's the limiting confidence. Greater
+            confidences in (all) points estimation will be considered,
+            otherwise they will be discarded. Defaults to 0.3.
+        verbose (bool, optional): Print info. Defaults to False.
+    """
+
+    # Global variables
+    global COUNT
+    global STATE
+    global state_stack
+    global PROGRESS
+
+    # Loop through Ultralytics Results
+    for r in result:
+
+        # Get bounding boxes
+        box = r.boxes
+        if r.names[int(box.cls.item())] != 'person':
+            print("First box is not a person")
+            break
+
+        # Get keypoints
+        kpts = r.keypoints  # Keypoints object for pose outputs
+
+        # Get coordinates of the joints of the left and right legs
+        left_coords, right_coords = get_legs_coords(kpts)
+        left_hand_coords, right_hand_coords = get_hands_coords(kpts)
+        left_shoulder_y = left_coords[1, 1]
+        right_shoulder_y = right_coords[1, 1]
+
+        # Check for confidences
+        if (left_coords[:, 2] > limit_conf).all() and (right_coords[:, 2] > limit_conf).all() and \
+           (left_hand_coords[:, 2] > limit_conf).all() and (right_hand_coords[:, 2] > limit_conf).all():
+
+            # Calculate the minimum angle in both legs
+            angles = legs_angles(left_coords[:, :2], right_coords[:, :2])
+
+            # Calculate progress based on knee angle
+            min_angle = min(angles)
+            PROGRESS = max(0, min(100, (150 - min_angle) / 30 * 100))
+
+            # Check hands position relative to shoulders
+            hands_above_shoulders = (left_hand_coords[0, 1] < left_shoulder_y) and (right_hand_coords[0, 1] < right_shoulder_y)
+
+            if hands_above_shoulders:
+                # Legs bent or stretched
+                if (angles < 120).all() and STATE == 'UP':
+                    STATE = 'DOWN'
+                elif (angles > 150).all() and STATE == 'DOWN':
+                    STATE = 'UP'
+
+                # Update stack of states and count
+                state_stack.append(STATE)
+                if len(state_stack) == 6:
+                    if state_stack == deque(
+                            ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
+                        COUNT += 1
+            else:
+                print("bad squatting")
+
+    # Show info if required
+    if verbose:
+        print(f"State: {STATE}")
+        print(f"Count: {COUNT}")
+        print(f"Progress: {PROGRESS:.0f}%")
 
 def draw_grid_on_image(img, grid_size=(10, 10)):
     """
@@ -379,21 +580,22 @@ while cap.isOpened():
         im = draw_grid_on_image(Image.fromarray(r.plot()[..., ::-1]))
         #im = np.array[im]
         #im.show()
-    print('1 - Simple squad\n 2 - Squads with hands above the hips\n 3 - Squads with hands above the shoulders')
-    try:
-        mode = int(input('Input : '))
-        if mode == 1:
-            evaluate_position(r)
-        elif mode == 2:
-            evaluate_position_2(r)
-        elif mode == 3:
-            evaluate_position_2(r)
+    
+    if cont == 0:
+        print('1 - Simple squat\n2 - Squats with hands above the hips\n3 - Squats with hands above the shoulders')
+        try:
+            MODE = int(input('Input : '))
+        except ValueError:
+            print('Not a number')
+            MODE = 1
 
-    except ValueError:
-        print('Not a number')
-
-    # Evaluate position
-    evaluate_position(r)
+    # Evaluate position based on the selected mode
+    if MODE == 1:
+        evaluate_position(r)
+    elif MODE == 2:
+        evaluate_position_mode_2(r)
+    elif MODE == 3:
+        evaluate_position_mode_3(r)
 
     frame_with_text = add_annotations(frame)
 
