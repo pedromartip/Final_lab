@@ -395,6 +395,7 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
         # Get coordinates of the joints of the left and right legs
         left_coords, right_coords = get_legs_coords(kpts)
         left_hand_coords, right_hand_coords = get_hands_coords(kpts)
+
         left_hip_y = left_coords[0, 1]
         right_hip_y = right_coords[0, 1]
 
@@ -409,7 +410,7 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
             min_angle = min(angles)
             PROGRESS = max(0, min(100, (150 - min_angle) / 30 * 100))
 
-            # Check hands position relative to hips
+            # Check if hands position relative to hips
             hands_above_hips = (left_hand_coords[0, 1] < left_hip_y) and (right_hand_coords[0, 1] < right_hip_y)
 
             if hands_above_hips:
