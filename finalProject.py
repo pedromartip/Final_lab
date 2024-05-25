@@ -84,7 +84,7 @@ def add_annotations(frame):
     text_position2 = (10, 60)
     text_position3 = (10, 90)
     text_position4 = (10, 120)
-    warning_position = (10, 150)
+    warning_position = (10, 200)
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.7
     green = (0, 255, 0)
@@ -104,7 +104,7 @@ def add_annotations(frame):
                 font_scale, blue, font_thickness)
     
     if HANDS_POSITION_WARNING:
-        warning_text = "Hands not above the shoulders" if MODE == 3 else "Hand not above the hip"
+        warning_text = "Hands not above the shoulders" if MODE == 3 else "Hands not above the hip"
         cv2.putText(frame_with_text, warning_text, warning_position, font,
                     font_scale, red, font_thickness)
     # Progress bar
