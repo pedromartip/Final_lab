@@ -1,0 +1,18 @@
+
+# Dataset path
+
+# You can use absolute path (recommended)
+path: C:\Users\jaadn\OneDrive\Escritorio\SI UIB\2nd Semester\Deep Learning\Labs\FINAL LAB
+
+# Train/val/test sets as 1) dir: path/to/imgs,
+#                        2) file: path/to/imgs.txt, or
+#                        3) list: [path/to/imgs1, path/to/imgs2, ..]
+
+# Here references must be relative to path
+train: dataE1/train.txt
+val: dataE1/val.txt
+test: dataE1/test.txt
+
+# Class Names
+names: [Not defined, Aircraft, ship, vehicle, ]
+    

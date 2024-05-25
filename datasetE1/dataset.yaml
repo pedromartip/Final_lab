@@ -1,0 +1,10 @@
+names:
+- Aircraft
+- ship
+- vehicle
+nc: 3
+path: ..
+train: C:\Users\jaadn\OneDrive\Escritorio\SI UIB\2nd Semester\Deep Learning\Labs\FINAL
+  LAB\datasetE1\images
+val: C:\Users\jaadn\OneDrive\Escritorio\SI UIB\2nd Semester\Deep Learning\Labs\FINAL
+  LAB\datasetE1\images
