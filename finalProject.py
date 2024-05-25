@@ -54,6 +54,8 @@ model = YOLO('src/models/yolov8s-pose.pt')
 # Open the video file
 source = 0
 # source = "src/inference/videos/MySquats.mp4"
+video_mode2_path = "mode_2.mp4"
+video_mode3_path = "mode_3.mp4"
 
 ##################################################
 # Helper functions
@@ -420,7 +422,12 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
         left_coords, right_coords = get_legs_coords(kpts) #left_leg = [11, 13, 15] & right_leg = [12, 14, 16]
         left_hand_coords, right_hand_coords = get_hands_coords(kpts)
 
-        # Geting hips coordinates
+        # Geting hips coordinates:
+        ''' How it works:
+        Coordinates of the left hip (left_coords[0, :])
+        Coordinates of the left knee (left_coords[1, :])
+        Coordinates of the left ankle (left_coords[2, :])
+        '''
         left_hip_y = left_coords[0, 1] # Accesing to coordinate y of left hip
         right_hip_y = right_coords[0, 1] # Accesing to coordinate y of right hip
 
@@ -580,13 +587,37 @@ def draw_grid_on_image(img, grid_size=(10, 10)):
 # Main program
 ##################################################
 
+use_camera = input('Do you ant to use camera (1) or a video (2)? ').strip().lower()
+
+if use_camera == 'c':
+    source = 0  # Usar la cámara
+    mode_selected = True
+else:
+    source = None  # Using video, the video will be defined with the mode 
+    mode_selected = False
+
 # Prompt user to select mode
 print('1 - Simple squat\n2 - Squats with hands above the hips\n3 - Squats with hands above the shoulders')
 try:
     MODE = int(input('Input : '))
+    if source is None:
+        # Asignar la fuente del video según el modo seleccionado
+        if MODE in [1, 2]:
+            source = video_mode2_path
+        elif MODE == 3:
+            source = video_mode3_path
+        else:
+            print('Invalid mode, using mode 1 by default.')
+            MODE = 1
+            source = video_mode2_path
+    elif MODE not in [1, 2, 3]:
+        print('Invalid mode, using mode 1 by default.')
+        MODE = 1
 except ValueError:
-    print('Not a number.. Using default mode 1.')
+    print('Not a number, using mode 1 by default.')
     MODE = 1
+    if source is None:
+        source = video_mode2_path
 
 # Select source
 cap = cv2.VideoCapture(source)
