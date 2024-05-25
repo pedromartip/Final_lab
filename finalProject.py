@@ -47,6 +47,7 @@ CHECK = True  # Used for debugging
 ONE_IMAGE = False
 MODE = 1  # Default mode
 PROGRESS = 0  # Squat progress
+HANDS_POSITION_WARNING = False # Warning dsplayed when the hands are not in the right position for squat
 
 # Load the Yolov8 model
 model = YOLO('src/models/yolov8s-pose.pt')
@@ -83,6 +84,7 @@ def add_annotations(frame):
     text_position2 = (10, 60)
     text_position3 = (10, 90)
     text_position4 = (10, 120)
+    warning_position = (10, 150)
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 0.7
     green = (0, 255, 0)
@@ -101,7 +103,11 @@ def add_annotations(frame):
     cv2.putText(frame_with_text, progress_text, text_position4, font,
                 font_scale, blue, font_thickness)
     
-     # Progress bar
+    if HANDS_POSITION_WARNING:
+        warning_text = "Hands not above the shoulders" if MODE == 3 else "Hand not above the hip"
+        cv2.putText(frame_with_text, warning_text, warning_position, font,
+                    font_scale, red, font_thickness)
+    # Progress bar
     bar_x, bar_y, bar_w, bar_h = 10, 150, 200, 20
     progress_w = int(bar_w * PROGRESS / 100)
     cv2.rectangle(frame_with_text, (bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h), blue, 2)
@@ -405,6 +411,9 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
     global STATE
     global state_stack
     global PROGRESS
+    global HANDS_POSITION_WARNING
+
+    HANDS_POSITION_WARNING = False
 
     # Loop through Ultralytics Results
     for r in result:
@@ -468,6 +477,7 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
                             ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
                         COUNT += 1
             else:
+                HANDS_POSITION_WARNING = True
                 print("bad squatting")
 
     # Show info if required
@@ -495,6 +505,9 @@ def evaluate_position_mode_3(result, limit_conf=0.3, verbose=False):
     global STATE
     global state_stack
     global PROGRESS
+    global HANDS_POSITION_WARNING
+
+    HANDS_POSITION_WARNING = False
 
     # Loop through Ultralytics Results
     for r in result:
@@ -546,6 +559,7 @@ def evaluate_position_mode_3(result, limit_conf=0.3, verbose=False):
                             ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
                         COUNT += 1
             else:
+                HANDS_POSITION_WARNING = True
                 print("bad squatting")
 
     # Show info if required
@@ -589,8 +603,8 @@ def draw_grid_on_image(img, grid_size=(10, 10)):
 
 use_camera = input('Do you ant to use camera (1) or a video (2)? ').strip().lower()
 
-if use_camera == 'c':
-    source = 0  # Usar la cámara
+if use_camera == '1':
+    source = 0  # Using camera
     mode_selected = True
 else:
     source = None  # Using video, the video will be defined with the mode 
