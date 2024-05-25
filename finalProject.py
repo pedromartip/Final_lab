@@ -222,6 +222,30 @@ def get_hands_coords(kpts):
 
     return left_hand_coords, right_hand_coords
 
+def get_shoulders_coords(kpts):
+    """
+    Obtiene las coordenadas de los hombros izquierdo y derecho.
+
+    Args:
+        kpts (ultralytics keypoints): Objeto de puntos clave del resultado
+            de una estimación de pose.
+
+    Returns:
+        left_shoulder_coords (numpy array): Coordenadas del hombro izquierdo.
+        right_shoulder_coords (numpy array): Coordenadas del hombro derecho.
+    """
+    # Índices de los hombros izquierdo y derecho
+    left_shoulder = [5]
+    right_shoulder = [6]
+
+    # Hombro izquierdo
+    left_shoulder_coords = kpts.data[0, left_shoulder, :].cpu().numpy()
+
+    # Hombro derecho
+    right_shoulder_coords = kpts.data[0, right_shoulder, :].cpu().numpy()
+
+    return left_shoulder_coords, right_shoulder_coords
+
 
 
 def extract(result):
@@ -393,21 +417,31 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
         kpts = r.keypoints  # Keypoints object for pose outputs
 
         # Get coordinates of the joints of the left and right legs
-        left_coords, right_coords = get_legs_coords(kpts)
+        left_coords, right_coords = get_legs_coords(kpts) #left_leg = [11, 13, 15] & right_leg = [12, 14, 16]
         left_hand_coords, right_hand_coords = get_hands_coords(kpts)
 
-        left_hip_y = left_coords[0, 1]
-        right_hip_y = right_coords[0, 1]
+        # Geting hips coordinates
+        left_hip_y = left_coords[0, 1] # Accesing to coordinate y of left hip
+        right_hip_y = right_coords[0, 1] # Accesing to coordinate y of right hip
 
-        # Check for confidences
+        # Check for confidences 
+        '''
+        Verifying that all coordinates have a higher confident 
+        threhold reather than 'limit_conf
+        '''''
         if (left_coords[:, 2] > limit_conf).all() and (right_coords[:, 2] > limit_conf).all() and \
            (left_hand_coords[:, 2] > limit_conf).all() and (right_hand_coords[:, 2] > limit_conf).all():
 
             # Calculate the minimum angle in both legs
-            angles = legs_angles(left_coords[:, :2], right_coords[:, :2])
+            angles = legs_angles(left_coords[:, :2], right_coords[:, :2]) # Using knee angle
 
             # Calculate progress based on knee angle
             min_angle = min(angles)
+            '''
+            Calculation of the squad progress.
+             - Taking a reference angle (150), less the minimum angles, we are takig the progress.
+             - The result is divided by 30 for representing that a 120 angle is a complet squad.
+            '''
             PROGRESS = max(0, min(100, (150 - min_angle) / 30 * 100))
 
             # Check if hands position relative to hips
@@ -470,12 +504,16 @@ def evaluate_position_mode_3(result, limit_conf=0.3, verbose=False):
         # Get coordinates of the joints of the left and right legs
         left_coords, right_coords = get_legs_coords(kpts)
         left_hand_coords, right_hand_coords = get_hands_coords(kpts)
-        left_shoulder_y = left_coords[1, 1]
-        right_shoulder_y = right_coords[1, 1]
+        left_shoulder_coords, right_shoulder_coords = get_shoulders_coords(kpts)
+
+        # Get shoulders coordinates
+        left_shoulder_y = left_shoulder_coords[0, 1]
+        right_shoulder_y = right_shoulder_coords[0, 1]
 
         # Check for confidences
         if (left_coords[:, 2] > limit_conf).all() and (right_coords[:, 2] > limit_conf).all() and \
-           (left_hand_coords[:, 2] > limit_conf).all() and (right_hand_coords[:, 2] > limit_conf).all():
+           (left_hand_coords[:, 2] > limit_conf).all() and (right_hand_coords[:, 2] > limit_conf).all() and \
+           (left_shoulder_coords[:, 2] > limit_conf).all() and (right_shoulder_coords[:, 2] > limit_conf).all():
 
             # Calculate the minimum angle in both legs
             angles = legs_angles(left_coords[:, :2], right_coords[:, :2])
@@ -542,6 +580,14 @@ def draw_grid_on_image(img, grid_size=(10, 10)):
 # Main program
 ##################################################
 
+# Prompt user to select mode
+print('1 - Simple squat\n2 - Squats with hands above the hips\n3 - Squats with hands above the shoulders')
+try:
+    MODE = int(input('Input : '))
+except ValueError:
+    print('Not a number.. Using default mode 1.')
+    MODE = 1
+
 # Select source
 cap = cv2.VideoCapture(source)
 stream = True  # If stream=True the output is a generator
@@ -581,14 +627,6 @@ while cap.isOpened():
         im = draw_grid_on_image(Image.fromarray(r.plot()[..., ::-1]))
         #im = np.array[im]
         #im.show()
-    
-    if cont == 0:
-        print('1 - Simple squat\n2 - Squats with hands above the hips\n3 - Squats with hands above the shoulders')
-        try:
-            MODE = int(input('Input : '))
-        except ValueError:
-            print('Not a number')
-            MODE = 1
 
     # Evaluate position based on the selected mode
     if MODE == 1:
