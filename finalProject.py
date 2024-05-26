@@ -55,8 +55,8 @@ model = YOLO('src/models/yolov8s-pose.pt')
 # Open the video file
 source = 0
 # source = "src/inference/videos/MySquats.mp4"
-video_mode2_path = "mode_2.mp4"
-video_mode3_path = "mode_3.mp4"
+video_mode2_path = "MySquats.mp4"
+video_mode3_path = "MySquats.mp4"
 
 ##################################################
 # Helper functions
@@ -327,73 +327,7 @@ def extract(result):
                 output_str += f"Class {i} ({names[i]}): {prob:.4f}\n"
 
 
-def evaluate_position(result, limit_conf=0.3, verbose=False):
-    """
-    Evaluate position of the body in the image
-
-    It updates the global variables STATE (UP or DOWN) and the number
-    of squats done (COUNT)
-
-    Args:
-        result (Ultralytics Results): Results object from Ultralytics. It
-            contains all the data of the pose estimation.
-        limit_conf (float, optional): It's the limiting confidence. Greater
-            confidences in (all) points estimation will be considered,
-            otherwise they will be descarted. Defaults to 0.3.
-        verbose (bool, optional): Print info. Defaults to False.
-    """
-
-    # Global variables
-    global COUNT
-    global STATE
-    global state_stack
-    global PROGRESS
-
-    # Loop through Ultralytics Results
-    for r in result:
-
-        # Get bounding boxes
-        box = r.boxes
-        if r.names[int(box.cls.item())] != 'person':
-            print("First box is not a person")
-            break
-
-        # Get keypoints
-        kpts = r.keypoints  # Keypoints object for pose outputs
-
-        # Get coordinates of the joints of the left and right legs
-        left_coords, right_coords = get_legs_coords(kpts)
-
-        # Check for confidences
-        if (left_coords[:, 2] > limit_conf).all() and (right_coords[:, 2] > limit_conf).all():
-
-            # Calculate the minimum angle in both legs
-            angles = legs_angles(left_coords[:, :2], right_coords[:, :2])
-
-            # Calculate progress based on knee angle
-            min_angle = min(angles)
-            PROGRESS = max(0, min(100, (150 - min_angle) / 30 * 100))
-
-            # Legs bent or stretched
-            if (angles < 120).all() and STATE=='UP':
-                STATE = 'DOWN'
-            elif (angles > 150).all() and STATE=='DOWN':
-                STATE = 'UP'
-
-            # Update stack of states and count
-            state_stack.append(STATE)
-            if len(state_stack)==6:
-                if state_stack == deque(
-                    ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
-                    COUNT += 1
-
-    # Show info if required
-    if verbose:
-        print(f"State: {STATE}")
-        print(f"Count: {COUNT}")
-        print(f"Progress: {PROGRESS:.0f}%")
-
-def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
+def evaluate_position(result, limit_conf=0.3, verbose=False, mode=1):
     """
     Evaluate position for mode 2: squats with hands above the hips
 
@@ -430,6 +364,8 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
         # Get coordinates of the joints of the left and right legs
         left_coords, right_coords = get_legs_coords(kpts) #left_leg = [11, 13, 15] & right_leg = [12, 14, 16]
         left_hand_coords, right_hand_coords = get_hands_coords(kpts)
+        left_shoulder_coords, right_shoulder_coords = get_shoulders_coords(kpts)
+
 
         # Geting hips coordinates:
         ''' How it works:
@@ -440,13 +376,18 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
         left_hip_y = left_coords[0, 1] # Accesing to coordinate y of left hip
         right_hip_y = right_coords[0, 1] # Accesing to coordinate y of right hip
 
+        # Get shoulders coordinates
+        left_shoulder_y = left_shoulder_coords[0, 1]
+        right_shoulder_y = right_shoulder_coords[0, 1]
+
         # Check for confidences 
         '''
         Verifying that all coordinates have a higher confident 
         threhold reather than 'limit_conf
         '''''
         if (left_coords[:, 2] > limit_conf).all() and (right_coords[:, 2] > limit_conf).all() and \
-           (left_hand_coords[:, 2] > limit_conf).all() and (right_hand_coords[:, 2] > limit_conf).all():
+           (left_hand_coords[:, 2] > limit_conf).all() and (right_hand_coords[:, 2] > limit_conf).all() and \
+           (left_shoulder_coords[:, 2] > limit_conf).all() and (right_shoulder_coords[:, 2] > limit_conf).all():
 
             # Calculate the minimum angle in both legs
             angles = legs_angles(left_coords[:, :2], right_coords[:, :2]) # Using knee angle
@@ -460,25 +401,63 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
             '''
             PROGRESS = max(0, min(100, (150 - min_angle) / 30 * 100))
 
-            # Check if hands position relative to hips
-            hands_above_hips = (left_hand_coords[0, 1] < left_hip_y) and (right_hand_coords[0, 1] < right_hip_y)
-
-            if hands_above_hips:
+            if mode == 1:
                 # Legs bent or stretched
-                if (angles < 120).all() and STATE == 'UP':
+                if (angles < 120).all() and STATE=='UP':
                     STATE = 'DOWN'
-                elif (angles > 150).all() and STATE == 'DOWN':
+                elif (angles > 150).all() and STATE=='DOWN':
                     STATE = 'UP'
 
                 # Update stack of states and count
                 state_stack.append(STATE)
-                if len(state_stack) == 6:
+                if len(state_stack)==6:
                     if state_stack == deque(
-                            ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
+                        ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
                         COUNT += 1
-            else:
-                HANDS_POSITION_WARNING = True
-                print("bad squatting")
+
+            if mode == 2:
+                # Check if hands position relative to hips
+                hands_above_hips = (left_hand_coords[0, 1] < left_hip_y) and (right_hand_coords[0, 1] < right_hip_y)
+
+                if hands_above_hips:
+                    # Legs bent or stretched
+                    if (angles < 120).all() and STATE == 'UP':
+                        STATE = 'DOWN'
+                    elif (angles > 150).all() and STATE == 'DOWN':
+                        STATE = 'UP'
+
+                    # Update stack of states and count
+                    state_stack.append(STATE)
+                    if len(state_stack) == 6:
+                        if state_stack == deque(
+                                ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
+                            COUNT += 1
+                else:
+                    HANDS_POSITION_WARNING = True
+                    state_stack = []
+                    print("bad squatting")
+
+            if mode == 3:
+                    # Check hands position relative to shoulders
+                hands_above_shoulders = (left_hand_coords[0, 1] < left_shoulder_y) and (right_hand_coords[0, 1] < right_shoulder_y)
+
+                if hands_above_shoulders:
+                    # Legs bent or stretched
+                    if (angles < 120).all() and STATE == 'UP':
+                        STATE = 'DOWN'
+                    elif (angles > 150).all() and STATE == 'DOWN':
+                        STATE = 'UP'
+
+                    # Update stack of states and count
+                    state_stack.append(STATE)
+                    if len(state_stack) == 6:
+                        if state_stack == deque(
+                                ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
+                            COUNT += 1
+                else:
+                    HANDS_POSITION_WARNING = True
+                    state_stack = []
+                    print("bad squatting")         
 
     # Show info if required
     if verbose:
@@ -486,87 +465,6 @@ def evaluate_position_mode_2(result, limit_conf=0.3, verbose=False):
         print(f"Count: {COUNT}")
         print(f"Progress: {PROGRESS:.0f}%")
 
-
-def evaluate_position_mode_3(result, limit_conf=0.3, verbose=False):
-    """
-    Evaluate position for mode 3: squats with hands above the shoulders
-
-    Args:
-        result (Ultralytics Results): Results object from Ultralytics. It
-            contains all the data of the pose estimation.
-        limit_conf (float, optional): It's the limiting confidence. Greater
-            confidences in (all) points estimation will be considered,
-            otherwise they will be discarded. Defaults to 0.3.
-        verbose (bool, optional): Print info. Defaults to False.
-    """
-
-    # Global variables
-    global COUNT
-    global STATE
-    global state_stack
-    global PROGRESS
-    global HANDS_POSITION_WARNING
-
-    HANDS_POSITION_WARNING = False
-
-    # Loop through Ultralytics Results
-    for r in result:
-
-        # Get bounding boxes
-        box = r.boxes
-        if r.names[int(box.cls.item())] != 'person':
-            print("First box is not a person")
-            break
-
-        # Get keypoints
-        kpts = r.keypoints  # Keypoints object for pose outputs
-
-        # Get coordinates of the joints of the left and right legs
-        left_coords, right_coords = get_legs_coords(kpts)
-        left_hand_coords, right_hand_coords = get_hands_coords(kpts)
-        left_shoulder_coords, right_shoulder_coords = get_shoulders_coords(kpts)
-
-        # Get shoulders coordinates
-        left_shoulder_y = left_shoulder_coords[0, 1]
-        right_shoulder_y = right_shoulder_coords[0, 1]
-
-        # Check for confidences
-        if (left_coords[:, 2] > limit_conf).all() and (right_coords[:, 2] > limit_conf).all() and \
-           (left_hand_coords[:, 2] > limit_conf).all() and (right_hand_coords[:, 2] > limit_conf).all() and \
-           (left_shoulder_coords[:, 2] > limit_conf).all() and (right_shoulder_coords[:, 2] > limit_conf).all():
-
-            # Calculate the minimum angle in both legs
-            angles = legs_angles(left_coords[:, :2], right_coords[:, :2])
-
-            # Calculate progress based on knee angle
-            min_angle = min(angles)
-            PROGRESS = max(0, min(100, (150 - min_angle) / 30 * 100))
-
-            # Check hands position relative to shoulders
-            hands_above_shoulders = (left_hand_coords[0, 1] < left_shoulder_y) and (right_hand_coords[0, 1] < right_shoulder_y)
-
-            if hands_above_shoulders:
-                # Legs bent or stretched
-                if (angles < 120).all() and STATE == 'UP':
-                    STATE = 'DOWN'
-                elif (angles > 150).all() and STATE == 'DOWN':
-                    STATE = 'UP'
-
-                # Update stack of states and count
-                state_stack.append(STATE)
-                if len(state_stack) == 6:
-                    if state_stack == deque(
-                            ['DOWN', 'DOWN', 'DOWN', 'UP', 'UP', 'UP']):
-                        COUNT += 1
-            else:
-                HANDS_POSITION_WARNING = True
-                print("bad squatting")
-
-    # Show info if required
-    if verbose:
-        print(f"State: {STATE}")
-        print(f"Count: {COUNT}")
-        print(f"Progress: {PROGRESS:.0f}%")
 
 def draw_grid_on_image(img, grid_size=(10, 10)):
     """
@@ -651,7 +549,7 @@ while cap.isOpened():
     # Perform pose estimation on this single frame
     results = model(source=frame,
                     show=True,
-                    conf=0.3,  # Confidence greater than
+                    conf=0.85,  # Confidence greater than
                     save=False,
                     stream=stream)  # Create a generator instead of a list
 
@@ -673,13 +571,7 @@ while cap.isOpened():
         #im = np.array[im]
         #im.show()
 
-    # Evaluate position based on the selected mode
-    if MODE == 1:
-        evaluate_position(r)
-    elif MODE == 2:
-        evaluate_position_mode_2(r)
-    elif MODE == 3:
-        evaluate_position_mode_3(r)
+    evaluate_position(r,mode=MODE)
 
     frame_with_text = add_annotations(frame)
 
