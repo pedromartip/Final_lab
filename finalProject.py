@@ -434,7 +434,6 @@ def evaluate_position(result, limit_conf=0.3, verbose=False, mode=1):
                             COUNT += 1
                 else:
                     HANDS_POSITION_WARNING = True
-                    state_stack = []
                     print("bad squatting")
 
             if mode == 3:
@@ -456,7 +455,6 @@ def evaluate_position(result, limit_conf=0.3, verbose=False, mode=1):
                             COUNT += 1
                 else:
                     HANDS_POSITION_WARNING = True
-                    state_stack = []
                     print("bad squatting")         
 
     # Show info if required
